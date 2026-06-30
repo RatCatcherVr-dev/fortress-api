@@ -116,12 +116,16 @@ app.get('/api/v1/lightswitch', (req, res) => {
   });
 });
 
-// Cloud storage / hotfix endpoint
+// Cloud storage / hotfix endpoint - FIXED FORMAT
 app.get('/cloudstorage/v1/hotfix', (req, res) => {
   res.json({
     "hotfixes": [],
     "version": "1.0.0",
-    "timestamp": new Date().toISOString()
+    "timestamp": new Date().toISOString(),
+    "AntiCheat": {
+      "enabled": false,
+      "Signs": []
+    }
   });
 });
 
@@ -162,6 +166,12 @@ app.get('/api/vbucks/:accountId', (req, res) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', uptime: process.uptime() });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 app.listen(PORT, () => {
