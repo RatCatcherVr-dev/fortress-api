@@ -9,6 +9,44 @@ app.use(express.json());
 const users = {};
 const accounts = {};
 
+// In-memory request log (stores last 100 requests)
+const requestLog = [];
+const MAX_LOG_SIZE = 100;
+
+// Middleware to log all requests
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  const logEntry = {
+    timestamp,
+    method: req.method,
+    path: req.path,
+    ip: req.ip,
+    userAgent: req.get('user-agent') || 'Unknown',
+    body: req.method !== 'GET' ? req.body : null,
+    status: null
+  };
+
+  // Intercept response to capture status
+  const originalSend = res.send;
+  res.send = function(data) {
+    logEntry.status = res.statusCode;
+    logEntry.response = data;
+    
+    // Add to log
+    requestLog.unshift(logEntry);
+    if (requestLog.length > MAX_LOG_SIZE) {
+      requestLog.pop();
+    }
+
+    // Console log for Railway logs
+    console.log(`[${timestamp}] ${req.method} ${req.path} - Status: ${res.statusCode} - IP: ${req.ip}`);
+    
+    return originalSend.call(this, data);
+  };
+
+  next();
+});
+
 // Status endpoints
 app.get('/api/status', (req, res) => {
   res.json({ online: true, players: 0 });
@@ -166,6 +204,67 @@ app.get('/api/vbucks/:accountId', (req, res) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', uptime: process.uptime() });
+});
+
+// NEW: Request log viewer endpoint
+app.get('/logs', (req, res) => {
+  res.json({
+    totalRequests: requestLog.length,
+    requests: requestLog
+  });
+});
+
+// NEW: Request log as HTML (web view)
+app.get('/logs-web', (req, res) => {
+  const htmlLog = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Fortress API Request Log</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #1e1e1e; color: #fff; }
+        h1 { color: #4CAF50; }
+        table { width: 100%; border-collapse: collapse; background: #2a2a2a; }
+        th, td { padding: 10px; text-align: left; border: 1px solid #444; }
+        th { background: #3a3a3a; color: #4CAF50; }
+        tr:hover { background: #3a3a3a; }
+        .method-GET { color: #90CAF9; }
+        .method-POST { color: #81C784; }
+        .status-200 { color: #4CAF50; }
+        .status-400 { color: #FFA726; }
+        .status-401 { color: #EF5350; }
+        .timestamp { font-size: 0.9em; color: #aaa; }
+      </style>
+      <meta http-equiv="refresh" content="5">
+    </head>
+    <body>
+      <h1>🎮 Fortress API Request Log</h1>
+      <p>Total Requests: <strong>${requestLog.length}</strong></p>
+      <p><small>Auto-refreshes every 5 seconds</small></p>
+      <table>
+        <tr>
+          <th>Timestamp</th>
+          <th>Method</th>
+          <th>Endpoint</th>
+          <th>Status</th>
+          <th>IP Address</th>
+          <th>User Agent</th>
+        </tr>
+        ${requestLog.map(log => `
+          <tr>
+            <td class="timestamp">${log.timestamp}</td>
+            <td class="method-${log.method}">${log.method}</td>
+            <td><strong>${log.path}</strong></td>
+            <td class="status-${log.status}">${log.status}</td>
+            <td>${log.ip}</td>
+            <td>${log.userAgent.substring(0, 50)}...</td>
+          </tr>
+        `).join('')}
+      </table>
+    </body>
+    </html>
+  `;
+  res.send(htmlLog);
 });
 
 // Error handling middleware
